@@ -8,6 +8,7 @@ final class AddressPoint
 {
     public function __construct(
         public readonly int $code,
+        public readonly ?int $streetCode,
         public readonly ?string $street,
         public readonly ?int $houseNumber,
         public readonly ?string $orientationNumber,
@@ -23,8 +24,12 @@ final class AddressPoint
     /**
      * Map a single ArcGIS feature (attributes + geometry) onto the DTO.
      *
-     * The layer's field names are not contractual, so every attribute is looked
-     * up through a small list of aliases and missing values fall back to null.
+     * The AdresniMisto layer does not expose the street, municipality and
+     * municipality part as separate text attributes — it only carries a numeric
+     * street code (`ulice`) and one already-composed human-readable `adresa`
+     * string. `adresa` is therefore the authoritative display value; the broken
+     * out `street` / `municipality` / `municipalityPart` are parsed back out of
+     * it on a best-effort basis and stay null whenever the shape is ambiguous.
      *
      * @param array{attributes?: array<string, mixed>, geometry?: array<string, mixed>} $feature
      */
@@ -33,71 +38,120 @@ final class AddressPoint
         $attributes = is_array($feature['attributes'] ?? null) ? $feature['attributes'] : [];
         $geometry = is_array($feature['geometry'] ?? null) ? $feature['geometry'] : [];
 
-        $code = self::int($attributes, ['Kod', 'KOD', 'kod', 'AdresniMistoKod']) ?? 0;
-        $street = self::string($attributes, ['Ulice', 'ULICE', 'NazevUlice']);
-        $municipality = self::string($attributes, ['Obec', 'OBEC', 'NazevObce']);
-        $municipalityPart = self::string($attributes, ['CastObce', 'CASTOBCE', 'NazevCastiObce']);
-        $houseNumber = self::int($attributes, ['CisloDomovni', 'CISLODOMOVNI', 'CD']);
-        $orientationNumber = self::string($attributes, ['CisloOrientacni', 'CISLOORIENTACNI', 'CO']);
-        $zip = self::string($attributes, ['PSC', 'Psc', 'psc']);
+        $code = self::int($attributes, 'kod') ?? 0;
+        $streetCode = self::int($attributes, 'ulice');
+        $houseNumber = self::int($attributes, 'cislodomovni');
+        $orientationNumber = self::orientationNumber($attributes);
+        $zip = self::formatZip(self::int($attributes, 'psc'));
+        $formatted = self::string($attributes, 'adresa') ?? '';
+
+        $parsed = self::parseAddress($formatted);
 
         return new self(
             code: $code,
-            street: $street,
+            streetCode: $streetCode,
+            street: $parsed['street'],
             houseNumber: $houseNumber,
             orientationNumber: $orientationNumber,
             zip: $zip,
-            municipality: $municipality,
-            municipalityPart: $municipalityPart,
-            latitude: self::float($geometry, ['y', 'Y', 'latitude']),
-            longitude: self::float($geometry, ['x', 'X', 'longitude']),
-            formatted: self::compose($street, $houseNumber, $orientationNumber, $zip, $municipality),
+            municipality: $parsed['municipality'],
+            municipalityPart: $parsed['municipalityPart'],
+            latitude: self::float($geometry, 'y'),
+            longitude: self::float($geometry, 'x'),
+            formatted: $formatted,
         );
     }
 
     /**
-     * Build the usual Czech one-line address: "Ulice 53/1522, 170 00 Praha".
+     * Compose the orientation number from its numeric part and optional trailing
+     * letter, e.g. 53 + "a" -> "53a". Returns null when no number is present.
+     *
+     * @param array<string, mixed> $attributes
      */
-    private static function compose(
-        ?string $street,
-        ?int $houseNumber,
-        ?string $orientationNumber,
-        ?string $zip,
-        ?string $municipality,
-    ): string {
-        $number = (string) ($houseNumber ?? '');
-        if ($orientationNumber !== null && $orientationNumber !== '') {
-            $number = $number === '' ? $orientationNumber : $number . '/' . $orientationNumber;
+    private static function orientationNumber(array $attributes): ?string
+    {
+        $number = self::int($attributes, 'cisloorientacni');
+        $letter = self::string($attributes, 'cisloorientacnipismeno');
+
+        if ($number === null) {
+            // A bare letter without a number is meaningless, so drop it too.
+            return null;
         }
 
-        $line = trim(($street ?? '') . ' ' . $number);
-
-        $place = trim(self::formatZip($zip) . ' ' . ($municipality ?? ''));
-
-        return implode(', ', array_filter([$line, $place], static fn (string $part): bool => $part !== ''));
+        return (string) $number . ($letter ?? '');
     }
 
-    private static function formatZip(?string $zip): string
+    /**
+     * Best-effort split of the composed `adresa` string into its named parts.
+     *
+     * The service formats the line as "<street numbers>, <part?>, <psc city>",
+     * e.g. "Jankovcova 1522/53, Holešovice, 17000 Praha 7". The first segment is
+     * the street with its house/orientation numbers stripped off the end, the
+     * last segment after the PSČ digits is the city, and a middle segment (when
+     * present) is the municipality part. Anything that does not match this shape
+     * is left null rather than guessed.
+     *
+     * @return array{street: ?string, municipality: ?string, municipalityPart: ?string}
+     */
+    private static function parseAddress(string $address): array
     {
-        if ($zip === null) {
-            return '';
+        $none = ['street' => null, 'municipality' => null, 'municipalityPart' => null];
+
+        $address = trim($address);
+        if ($address === '') {
+            return $none;
         }
 
-        $digits = preg_replace('/\s+/', '', $zip) ?? $zip;
+        $segments = array_map('trim', explode(',', $address));
+        $segments = array_values(array_filter($segments, static fn (string $s): bool => $s !== ''));
 
-        // Czech postal codes are printed as "NNN NN"; leave anything unexpected untouched.
-        return preg_match('/^\d{5}$/', $digits) === 1
+        if ($segments === []) {
+            return $none;
+        }
+
+        // Street is the first segment with the trailing house/orientation number
+        // (e.g. "1522/53" or "53a") removed; if nothing is left it stays null.
+        $street = trim((string) preg_replace('/\s+\d+\S*$/u', '', $segments[0]));
+        $street = $street === '' ? null : $street;
+
+        // City is the last segment after the leading PSČ digits, if any.
+        $last = (string) end($segments);
+        $city = trim((string) preg_replace('/^\d{5}\s*/u', '', $last));
+        $municipality = $city === '' ? null : $city;
+
+        // With exactly three segments the middle one is the municipality part;
+        // the array_filter above already dropped empty segments.
+        $municipalityPart = count($segments) === 3 ? $segments[1] : null;
+
+        return [
+            'street' => $street,
+            'municipality' => $municipality,
+            'municipalityPart' => $municipalityPart,
+        ];
+    }
+
+    /**
+     * Czech postal codes are stored as a 5-digit integer and printed as "NNN NN".
+     */
+    private static function formatZip(?int $psc): ?string
+    {
+        if ($psc === null) {
+            return null;
+        }
+
+        $digits = (string) $psc;
+
+        return strlen($digits) === 5
             ? substr($digits, 0, 3) . ' ' . substr($digits, 3)
-            : $zip;
+            : $digits;
     }
 
     /**
      * @param array<string, mixed> $source
-     * @param list<string> $keys
      */
-    private static function string(array $source, array $keys): ?string
+    private static function string(array $source, string $key): ?string
     {
-        $value = self::pick($source, $keys);
+        $value = $source[$key] ?? null;
         if ($value === null || !is_scalar($value)) {
             return null;
         }
@@ -109,39 +163,21 @@ final class AddressPoint
 
     /**
      * @param array<string, mixed> $source
-     * @param list<string> $keys
      */
-    private static function int(array $source, array $keys): ?int
+    private static function int(array $source, string $key): ?int
     {
-        $value = self::pick($source, $keys);
+        $value = $source[$key] ?? null;
 
         return is_numeric($value) ? (int) $value : null;
     }
 
     /**
      * @param array<string, mixed> $source
-     * @param list<string> $keys
      */
-    private static function float(array $source, array $keys): ?float
+    private static function float(array $source, string $key): ?float
     {
-        $value = self::pick($source, $keys);
+        $value = $source[$key] ?? null;
 
         return is_numeric($value) ? (float) $value : null;
-    }
-
-    /**
-     * @param array<string, mixed> $source
-     * @param list<string> $keys
-     */
-    private static function pick(array $source, array $keys): mixed
-    {
-        foreach ($keys as $key) {
-            // ArcGIS sends nulls for empty optional fields; skip them so a later alias can win.
-            if (array_key_exists($key, $source) && $source[$key] !== null) {
-                return $source[$key];
-            }
-        }
-
-        return null;
     }
 }

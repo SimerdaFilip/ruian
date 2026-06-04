@@ -35,25 +35,31 @@ use Simerda\Ruian\RuianClient;
 
 $ruian = new RuianClient();
 
-$point = $ruian->findByAddressPointCode(21731491);
+$point = $ruian->findByAddressPointCode(25958895);
 
 if ($point !== null) {
-    echo $point->formatted, "\n";          // "Jankovcova 1522/53, 170 00 Praha"
-    echo $point->latitude, ' ', $point->longitude, "\n";  // 50.1041 14.4453
+    echo $point->formatted, "\n";          // "Jankovcova 1522/53, Holešovice, 17000 Praha 7"
+    echo $point->latitude, ' ', $point->longitude, "\n";  // 50.1085 14.4530
 }
 ```
 
-Free-text search (street or municipality name):
+Free-text search over the address line:
 
 ```php
 foreach ($ruian->search('Jankovcova', limit: 5) as $point) {
-    printf("%-40s  %s\n", $point->formatted, $point->code);
+    printf("%-50s  %s\n", $point->formatted, $point->code);
 }
 ```
 
-`AddressPoint` is a readonly DTO: `code`, `street`, `houseNumber`, `orientationNumber`, `zip`,
-`municipality`, `municipalityPart`, `latitude`, `longitude` and a ready-made `formatted` one-liner.
-Any field the service omits is `null`.
+`AddressPoint` is a readonly DTO: `code`, `streetCode`, `street`, `houseNumber`, `orientationNumber`,
+`zip`, `municipality`, `municipalityPart`, `latitude`, `longitude` and the `formatted` one-liner.
+
+The ČÚZK `AdresniMisto` layer returns the address as a single composed `adresa` string plus a numeric
+street code (`ulice`) — it does **not** expose the street/municipality/part as separate text fields.
+So `formatted` (the verbatim `adresa`) is the source of truth and `streetCode` is the numeric `ulice`.
+The broken-out `street`, `municipality` and `municipalityPart` are parsed back out of that line on a
+best-effort basis and are `null` whenever the shape is ambiguous; `zip` and the coordinates come from
+the reliable numeric attributes.
 
 ## Code value objects
 
@@ -67,10 +73,10 @@ use Simerda\Ruian\Code\AdresniMistoCode;
 use Simerda\Ruian\Code\ObecCode;
 
 $obec = ObecCode::fromString('554782');
-$misto = AdresniMistoCode::fromInt(21731491);
+$misto = AdresniMistoCode::fromInt(25958895);
 
 echo $obec->value;       // 554782 (int)
-echo (string) $misto;    // "21731491"
+echo (string) $misto;    // "25958895"
 
 // Pass the code straight into the client:
 $point = (new RuianClient())->findByAddressPointCode($misto);
@@ -99,9 +105,9 @@ HTTP 200 and an `{"error": {...}}` payload). Malformed input to a code value obj
 
 ## Overriding the service location
 
-The ČÚZK map service is occasionally republished, and the layer field names are **not** a stable
-contract. The DTO maps attributes defensively (it accepts a few field-name aliases), but if ČÚZK
-changes the layout you can point the client somewhere else without touching the code:
+The ČÚZK map service is occasionally republished. The DTO maps the layer attributes defensively
+(missing values fall back to `null`), but if ČÚZK changes the layout you can point the client
+somewhere else without touching the code:
 
 ```php
 $ruian = new RuianClient(
@@ -112,6 +118,53 @@ $ruian = new RuianClient(
 ```
 
 The default base URL is the RÚIAN viewing service and the default layer is `1` (address points).
+
+## Frontend
+
+The JavaScript address autocomplete widget lives in a separate npm package,
+[`@simerda/ruian-autocomplete`](https://github.com/SimerdaFilip/ruian-autocomplete).
+
+This PHP package can act as the optional proxy backend it calls.
+`Simerda\Ruian\Suggest\SuggestHandler` turns a query into flat, JSON-serializable
+`Suggestion` objects and stays out of the HTTP layer (no `echo`, no headers), so
+it drops into any framework or plain PHP. Queries shorter than two characters
+return an empty list without hitting the network.
+
+```php
+use Simerda\Ruian\RuianClient;
+use Simerda\Ruian\Suggest\SuggestHandler;
+
+$handler = new SuggestHandler(new RuianClient());
+
+// Plain PHP endpoint (see examples/suggest.php):
+header('Content-Type: application/json; charset=utf-8');
+echo json_encode($handler->suggest($_GET['q'] ?? '', (int) ($_GET['limit'] ?? 10)));
+```
+
+In a framework return the array straight from a controller (Laravel
+`response()->json($handler->suggest(...))`, Symfony `JsonResponse`, Slim, ...) —
+`Suggestion` implements `JsonSerializable`.
+
+`GET ?q=<query>&limit=<n>` returns a JSON array; each item is one suggestion:
+
+```json
+{
+  "code": 25958895,
+  "label": "Jankovcova 1522/53, Holešovice, 17000 Praha 7",
+  "streetCode": 449423,
+  "street": "Jankovcova",
+  "houseNumber": 1522,
+  "orientationNumber": "53",
+  "zip": "170 00",
+  "municipality": "Praha 7",
+  "municipalityPart": "Holešovice",
+  "lat": 50.10849611774761,
+  "lng": 14.452959927874597
+}
+```
+
+`label` (the ČÚZK `adresa` line) is always reliable; the broken-out
+`street`/`municipality`/`municipalityPart` are parsed best-effort and may be `null`.
 
 ## License
 

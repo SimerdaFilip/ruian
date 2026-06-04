@@ -1,40 +1,48 @@
 {
-    "displayFieldName": "Nazev",
+    "displayFieldName": "adresa",
     "fieldAliases": {
-        "Kod": "Kód",
-        "Nazev": "Název"
+        "kod": "Kód adresního místa",
+        "ulice": "Nadřazená ulice",
+        "cislodomovni": "Číslo domovní",
+        "cisloorientacni": "Číselná část čísla orientačního",
+        "cisloorientacnipismeno": "Koncové písmeno čísla orientačního",
+        "psc": "PSČ adresní pošty",
+        "adresa": "Adresa"
+    },
+    "geometryType": "esriGeometryPoint",
+    "spatialReference": {
+        "wkid": 4326,
+        "latestWkid": 4326
     },
     "features": [
         {
             "attributes": {
-                "Kod": 21731491,
-                "Nazev": "Jankovcova 1522/53",
-                "Ulice": "Jankovcova",
-                "CisloDomovni": 1522,
-                "CisloOrientacni": "53",
-                "PSC": 17000,
-                "Obec": "Praha",
-                "CastObce": "Holešovice"
+                "kod": 25958895,
+                "ulice": 449423,
+                "cislodomovni": 1522,
+                "cisloorientacni": 53,
+                "cisloorientacnipismeno": null,
+                "psc": 17000,
+                "adresa": "Jankovcova 1522/53, Holešovice, 17000 Praha 7"
             },
             "geometry": {
-                "x": 14.4453,
-                "y": 50.1041
+                "x": 14.452959927874597,
+                "y": 50.10849611774761
             }
         },
         {
             "attributes": {
-                "Kod": 21731505,
-                "Nazev": "Jankovcova 1518/2",
-                "Ulice": "Jankovcova",
-                "CisloDomovni": 1518,
-                "CisloOrientacni": "2",
-                "PSC": 17000,
-                "Obec": "Praha",
-                "CastObce": "Holešovice"
+                "kod": 25958909,
+                "ulice": 449423,
+                "cislodomovni": 1518,
+                "cisloorientacni": 2,
+                "cisloorientacnipismeno": null,
+                "psc": 17000,
+                "adresa": "Jankovcova 1518/2, Holešovice, 17000 Praha 7"
             },
             "geometry": {
-                "x": 14.4467,
-                "y": 50.1052
+                "x": 14.446700,
+                "y": 50.105200
             }
         }
     ]

@@ -17,19 +17,20 @@ final class RuianClientTest extends TestCase
         $http = new StubHttpClient(200, $this->fixture());
         $client = new RuianClient($http);
 
-        $point = $client->findByAddressPointCode(21731491);
+        $point = $client->findByAddressPointCode(25958895);
 
         self::assertInstanceOf(AddressPoint::class, $point);
-        self::assertSame(21731491, $point->code);
+        self::assertSame(25958895, $point->code);
+        self::assertSame(449423, $point->streetCode);
         self::assertSame('Jankovcova', $point->street);
         self::assertSame(1522, $point->houseNumber);
         self::assertSame('53', $point->orientationNumber);
-        self::assertSame('17000', $point->zip);
-        self::assertSame('Praha', $point->municipality);
+        self::assertSame('170 00', $point->zip);
+        self::assertSame('Praha 7', $point->municipality);
         self::assertSame('Holešovice', $point->municipalityPart);
-        self::assertSame(50.1041, $point->latitude);
-        self::assertSame(14.4453, $point->longitude);
-        self::assertSame('Jankovcova 1522/53, 170 00 Praha', $point->formatted);
+        self::assertEqualsWithDelta(50.1085, $point->latitude, 0.0001);
+        self::assertEqualsWithDelta(14.4530, $point->longitude, 0.0001);
+        self::assertSame('Jankovcova 1522/53, Holešovice, 17000 Praha 7', $point->formatted);
     }
 
     public function testFindByAddressPointCodeBuildsTheExpectedQuery(): void
@@ -37,11 +38,13 @@ final class RuianClientTest extends TestCase
         $http = new StubHttpClient(200, $this->fixture());
         $client = new RuianClient($http);
 
-        $client->findByAddressPointCode(21731491);
+        $client->findByAddressPointCode(25958895);
 
         self::assertNotNull($http->requestedUrl);
-        // where=Kod=21731491 url-encodes the equals sign as %3D.
-        self::assertStringContainsString('where=Kod%3D21731491', $http->requestedUrl);
+        // where=kod=25958895 url-encodes the equals sign as %3D.
+        self::assertStringContainsString('where=kod%3D25958895', $http->requestedUrl);
+        self::assertStringContainsString('outFields=kod', $http->requestedUrl);
+        self::assertStringContainsString('outSR=4326', $http->requestedUrl);
         self::assertStringContainsString('f=json', $http->requestedUrl);
         self::assertStringContainsString('/1/query?', $http->requestedUrl);
     }
@@ -51,11 +54,11 @@ final class RuianClientTest extends TestCase
         $http = new StubHttpClient(200, $this->fixture());
         $client = new RuianClient($http);
 
-        $point = $client->findByAddressPointCode(AdresniMistoCode::fromInt(21731491));
+        $point = $client->findByAddressPointCode(AdresniMistoCode::fromInt(25958895));
 
         self::assertInstanceOf(AddressPoint::class, $point);
         self::assertNotNull($http->requestedUrl);
-        self::assertStringContainsString('where=Kod%3D21731491', $http->requestedUrl);
+        self::assertStringContainsString('where=kod%3D25958895', $http->requestedUrl);
     }
 
     public function testFindByAddressPointCodeReturnsNullWhenNoFeatures(): void
@@ -73,8 +76,20 @@ final class RuianClientTest extends TestCase
         $points = $client->search('Jankovcova');
 
         self::assertCount(2, $points);
-        self::assertSame(21731491, $points[0]->code);
-        self::assertSame(21731505, $points[1]->code);
+        self::assertSame(25958895, $points[0]->code);
+        self::assertSame(25958909, $points[1]->code);
+    }
+
+    public function testSearchBuildsTheLikeQueryOverAdresa(): void
+    {
+        $http = new StubHttpClient(200, $this->fixture());
+        $client = new RuianClient($http);
+
+        $client->search('Jankovcova');
+
+        self::assertNotNull($http->requestedUrl);
+        $decoded = urldecode($http->requestedUrl);
+        self::assertStringContainsString("UPPER(adresa) LIKE UPPER('%Jankovcova%')", $decoded);
     }
 
     public function testSearchPassesResultRecordCountAndCaps(): void

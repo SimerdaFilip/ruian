@@ -30,6 +30,12 @@ final class RuianClient
      */
     private const DEFAULT_LAYER_ID = 1;
 
+    /**
+     * The AdresniMisto attributes worth pulling back. `adresa` is the
+     * authoritative display string; `ulice` is the numeric street code.
+     */
+    private const OUT_FIELDS = 'kod,ulice,cislodomovni,cisloorientacni,cisloorientacnipismeno,psc,adresa';
+
     private readonly HttpClientInterface $http;
     private readonly string $baseUrl;
 
@@ -47,8 +53,8 @@ final class RuianClient
         $value = $code instanceof AdresniMistoCode ? $code->value : $code;
 
         $features = $this->query([
-            'where' => sprintf('Kod=%d', $value),
-            'outFields' => '*',
+            'where' => sprintf('kod=%d', $value),
+            'outFields' => self::OUT_FIELDS,
             'returnGeometry' => 'true',
             'outSR' => '4326',
             'f' => 'json',
@@ -60,7 +66,7 @@ final class RuianClient
     }
 
     /**
-     * Free-text search over street and municipality names.
+     * Free-text search over the human-readable address string.
      *
      * @return list<AddressPoint>
      */
@@ -70,12 +76,10 @@ final class RuianClient
         $needle = self::escapeLikeValue($query);
 
         $features = $this->query([
-            'where' => sprintf(
-                "UPPER(Ulice) LIKE UPPER('%%%s%%') OR UPPER(Obec) LIKE UPPER('%%%s%%')",
-                $needle,
-                $needle,
-            ),
-            'outFields' => '*',
+            // `adresa` is the only free-text field on the layer; a substring
+            // LIKE over it covers street, part and city in one go.
+            'where' => sprintf("UPPER(adresa) LIKE UPPER('%%%s%%')", $needle),
+            'outFields' => self::OUT_FIELDS,
             'returnGeometry' => 'true',
             'outSR' => '4326',
             'resultRecordCount' => (string) $limit,
