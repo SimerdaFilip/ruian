@@ -1,0 +1,41 @@
+{
+    "displayFieldName": "Nazev",
+    "fieldAliases": {
+        "Kod": "Kód",
+        "Nazev": "Název"
+    },
+    "features": [
+        {
+            "attributes": {
+                "Kod": 21731491,
+                "Nazev": "Jankovcova 1522/53",
+                "Ulice": "Jankovcova",
+                "CisloDomovni": 1522,
+                "CisloOrientacni": "53",
+                "PSC": 17000,
+                "Obec": "Praha",
+                "CastObce": "Holešovice"
+            },
+            "geometry": {
+                "x": 14.4453,
+                "y": 50.1041
+            }
+        },
+        {
+            "attributes": {
+                "Kod": 21731505,
+                "Nazev": "Jankovcova 1518/2",
+                "Ulice": "Jankovcova",
+                "CisloDomovni": 1518,
+                "CisloOrientacni": "2",
+                "PSC": 17000,
+                "Obec": "Praha",
+                "CastObce": "Holešovice"
+            },
+            "geometry": {
+                "x": 14.4467,
+                "y": 50.1052
+            }
+        }
+    ]
+}

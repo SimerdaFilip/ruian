@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<ruleset name="simerda/ruian">
+    <description>PSR-12 coding standard for the RÚIAN client.</description>
+
+    <file>src</file>
+    <file>tests</file>
+
+    <arg name="colors"/>
+    <arg value="sp"/>
+
+    <rule ref="PSR12"/>
+</ruleset>
